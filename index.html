@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Monte Carlo Part Count Confidence</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+      }
+      .container {
+        display: flex;
+      }
+      .input-column {
+        width: 30%; /* Adjust as needed */
+        padding-right: 20px;
+      }
+      .results-column {
+        width: 70%; /* Adjust as needed */
+        padding-left: 20px;
+      }
+      .input-section {
+        margin-bottom: 20px;
+      }
+      .input-group {
+        margin-bottom: 10px;
+      }
+      .input-group label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: bold;
+      }
+      .input-group input {
+        width: 200px;
+        padding: 8px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+      }
+      .hidden {
+        display: none;
+      }
+      .footer {
+        margin-top: 20px;
+        font-size: 0.8em;
+        color: #666;
+      }
+      button {
+        padding: 10px 20px;
+        background-color: #4caf50;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      button:hover {
+        background-color: #45a049;
+      }
+      #results {
+        margin-top: 20px;
+        padding: 15px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        background-color: #f9f9f9;
+      }
+      #plot-container {
+        height: 500px;
+        margin-top: 20px;
+        width: 100%; /* Take full width of results column */
+      }
+    </style>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  </head>
+  <body>
+    <h1>Monte Carlo Simulation for Part Count Confidence Level</h1>
+
+    <div class="container">
+      <div class="input-column">
+        <div class="input-section">
+          <h2>Simulation Parameters</h2>
+          <div class="input-group">
+            <label for="N_ref_input">N_ref (Reference Count):</label>
+            <input type="number" id="N_ref_input" value="10" />
+          </div>
+          <div class="input-group">
+            <label for="CV_input">CV (Coefficient of Variation):</label>
+            <input type="number" id="CV_input" value="0.02" step="0.01" />
+          </div>
+          <div class="input-group">
+            <label for="N_counted_input">N_counted (Counted Quantity):</label>
+            <input type="number" id="N_counted_input" value="100" />
+          </div>
+          <div class="input-group">
+            <label for="N_required_input"
+              >N_required (Required Quantity):</label
+            >
+            <input type="number" id="N_required_input" value="100" />
+          </div>
+          <div class="input-group">
+            <label for="num_simulations_input">Number of Simulations:</label>
+            <input
+              type="number"
+              id="num_simulations_input"
+              value="10000"
+              min="100"
+              max="100000"
+              step="1000"
+            />
+          </div>
+          <div class="input-group hidden">
+            <label for="assumed_mean_weight">Assumed Mean Weight:</label>
+            <input type="number" id="assumed_mean_weight" value="10" />
+          </div>
+          <button onclick="runSimulation()">Run Simulation</button>
+        </div>
+      </div>
+
+      <div class="results-column">
+        <div id="results">
+          <h2>Simulation Results</h2>
+          <div id="results-text">
+            <!-- Results will be displayed here -->
+          </div>
+        </div>
+
+        <div id="plot-container">
+          <!-- Plotly plot will be rendered here -->
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <p>
+        <strong>Disclaimer:</strong> This simulation is for educational purposes
+        only. The results may vary based on the input parameters and random
+        number generation.
+      </p>
+      <p>
+        <a href="https://github.com/andygock/monte-carlo-scales" target="_blank"
+          >GitHub</a
+        >
+      </p>
+    </div>
+
+    <script>
+      function normalRandom() {
+        let u1 = 0,
+          u2 = 0;
+        while (u1 === 0) u1 = Math.random();
+        while (u2 === 0) u2 = Math.random();
+        let r = Math.sqrt(-2.0 * Math.log(u1));
+        let theta = 2.0 * Math.PI * u2;
+        return r * Math.cos(theta);
+      }
+
+      function monteCarloSimulation(
+        N_ref,
+        CV,
+        N_counted,
+        N_required,
+        num_simulations,
+        mu_weight_sample
+      ) {
+        const sigma_weight_sample = CV * mu_weight_sample;
+        const simulated_counts = new Array(num_simulations);
+
+        for (let i = 0; i < num_simulations; i++) {
+          let reference_weights = 0;
+          for (let j = 0; j < N_ref; j++) {
+            reference_weights +=
+              mu_weight_sample + normalRandom() * sigma_weight_sample;
+          }
+
+          let counted_weights = 0;
+          for (let j = 0; j < N_counted; j++) {
+            counted_weights +=
+              mu_weight_sample + normalRandom() * sigma_weight_sample;
+          }
+
+          if (reference_weights <= 0) {
+            simulated_counts[i] = NaN;
+          } else {
+            simulated_counts[i] = N_ref * (counted_weights / reference_weights);
+          }
+        }
+
+        const simulated_counts_valid = simulated_counts.filter(Number.isFinite);
+
+        let confidence_level = NaN;
+        let std_dev_count_estimate = NaN;
+
+        if (simulated_counts_valid.length > 0) {
+          std_dev_count_estimate = Math.sqrt(
+            simulated_counts_valid.reduce(
+              (sum, val) =>
+                sum +
+                Math.pow(
+                  val -
+                    simulated_counts_valid.reduce((a, b) => a + b, 0) /
+                      simulated_counts_valid.length,
+                  2
+                ),
+              0
+            ) /
+              (simulated_counts_valid.length - 1)
+          );
+          const confidence_level_proportion =
+            simulated_counts_valid.filter((count) => count >= N_required - 0.5)
+              .length / simulated_counts_valid.length;
+          confidence_level = confidence_level_proportion * 100;
+        }
+
+        return {
+          confidence_level,
+          std_dev_count_estimate,
+          simulated_counts_valid,
+        };
+      }
+
+      function runSimulation() {
+        const N_ref_input = parseInt(
+          document.getElementById("N_ref_input").value
+        );
+        const CV_input = parseFloat(document.getElementById("CV_input").value);
+        const N_counted_input = parseInt(
+          document.getElementById("N_counted_input").value
+        );
+        const N_required_input = parseInt(
+          document.getElementById("N_required_input").value
+        );
+        const num_simulations_input = parseInt(
+          document.getElementById("num_simulations_input").value
+        );
+        const assumed_mean_weight = parseFloat(
+          document.getElementById("assumed_mean_weight").value
+        );
+
+        if (
+          N_ref_input > 0 &&
+          CV_input >= 0 &&
+          N_counted_input >= 0 &&
+          N_required_input >= 0 &&
+          num_simulations_input > 0 &&
+          assumed_mean_weight > 0
+        ) {
+          if (num_simulations_input > 100000) {
+            alert(
+              "Warning: Limiting simulations to 100,000 as maximum allowed."
+            );
+            num_simulations_input = 100000;
+            document.getElementById("num_simulations_input").value = 100000; // Update input field
+          }
+
+          const results = monteCarloSimulation(
+            N_ref_input,
+            CV_input,
+            N_counted_input,
+            N_required_input,
+            num_simulations_input,
+            assumed_mean_weight
+          );
+          displayResults(results, N_counted_input, N_required_input);
+        } else {
+          alert(
+            "Please ensure all input parameters are valid (N_ref, N_counted, N_required, num_simulations >= 0, CV >= 0, assumed_mean_weight > 0)."
+          );
+        }
+      }
+
+      function displayResults(results, N_counted, N_required) {
+        const resultsDiv = document.getElementById("results-text");
+        resultsDiv.innerHTML = `
+                <p><strong>Monte Carlo Simulation Results:</strong></p>
+                <p>Number of Simulations: ${num_simulations_input.value}</p>
+                <p>Input Parameters:</p>
+                <p>  N_ref: ${N_ref_input.value}, CV: ${
+          CV_input.value
+        }, N_counted: ${N_counted_input.value}, N_required: ${
+          N_required_input.value
+        }</p>
+                <p>Estimated Standard Deviation of Count Estimate: ${
+                  results.std_dev_count_estimate
+                    ? results.std_dev_count_estimate.toFixed(4)
+                    : "NaN"
+                }</p>
+                <p>Confidence Level (True Count >= N_required): ${
+                  results.confidence_level
+                    ? results.confidence_level.toFixed(2) + "%"
+                    : "NaN%"
+                }</p>
+            `;
+
+        if (
+          results.simulated_counts_valid &&
+          results.simulated_counts_valid.length > 0
+        ) {
+          plotHistogram(results.simulated_counts_valid, N_counted, N_required);
+        } else {
+          resultsDiv.innerHTML +=
+            "<p>Warning: No valid simulated counts generated (W_ref_total was always non-positive).<br>This is highly unusual unless parameters are very extreme.</p>";
+          clearPlot(); // Clear any previous plot if no valid data.
+        }
+      }
+
+      function plotHistogram(sim_counts, N_counted, N_required) {
+        const trace = {
+          x: sim_counts,
+          type: "histogram",
+          histnorm: "density",
+          marker: {
+            color: "green",
+            line: {
+              color: "darkgreen",
+              width: 1,
+            },
+          },
+          opacity: 0.6,
+        };
+
+        const layout = {
+          title: "Histogram of Monte Carlo Simulated Count Estimates",
+          xaxis: { title: "Simulated Count Estimate" },
+          yaxis: { title: "Density" },
+          shapes: [
+            {
+              type: "line",
+              x0: N_counted,
+              x1: N_counted,
+              y0: 0,
+              y1: 1,
+              yref: "y domain",
+              line: { color: "red", dash: "dash", width: 1 },
+            },
+            {
+              type: "line",
+              x0: N_required - 0.5,
+              x1: N_required - 0.5,
+              y0: 0,
+              y1: 1,
+              yref: "y domain",
+              line: { color: "blue", dash: "dash", width: 1 },
+            },
+          ],
+          annotations: [
+            {
+              x: N_counted,
+              y: 0.9,
+              xref: "x",
+              yref: "y domain",
+              text: `Displayed Count (${N_counted})`,
+              showarrow: false,
+              xanchor: "left",
+            },
+            {
+              x: N_required - 0.5,
+              y: 0.8,
+              xref: "x",
+              yref: "y domain",
+              text: `N_required Lower Bound (${N_required - 0.5})`,
+              showarrow: false,
+              xanchor: "left",
+            },
+          ],
+          bargap: 0.1,
+          yaxis: { gridcolor: "#ddd" },
+        };
+
+        Plotly.newPlot("plot-container", [trace], layout);
+      }
+
+      function clearPlot() {
+        Plotly.purge("plot-container"); // Clears the plot area
+      }
+    </script>
+  </body>
+</html>
