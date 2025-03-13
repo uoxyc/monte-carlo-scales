@@ -46,11 +46,15 @@ document.addEventListener("DOMContentLoaded", function () {
           }
         }
 
-        updateProgress(Math.floor((i / num_simulations) * 100));
+        updateProgress(
+          `Simulating... ${Math.floor((i / num_simulations) * 100)}%`
+        );
 
         if (i < num_simulations) {
           setTimeout(simulateChunk, 0);
         } else {
+          // Simulation complete, but still have to process results
+
           const simulated_counts_valid = simulated_counts.filter(
             Number.isFinite
           );
@@ -59,18 +63,13 @@ document.addEventListener("DOMContentLoaded", function () {
           let std_dev_count_estimate = NaN;
 
           if (simulated_counts_valid.length > 0) {
+            const mean =
+              simulated_counts_valid.reduce((a, b) => a + b, 0) /
+              simulated_counts_valid.length;
             std_dev_count_estimate = Math.sqrt(
-              simulated_counts_valid.reduce(
-                (sum, val) =>
-                  sum +
-                  Math.pow(
-                    val -
-                      simulated_counts_valid.reduce((a, b) => a + b, 0) /
-                        simulated_counts_valid.length,
-                    2
-                  ),
-                0
-              ) /
+              simulated_counts_valid.reduce((sum, val) => {
+                return sum + Math.pow(val - mean, 2);
+              }, 0) /
                 (simulated_counts_valid.length - 1)
             );
             const confidence_level_proportion =
@@ -79,6 +78,8 @@ document.addEventListener("DOMContentLoaded", function () {
               ).length / simulated_counts_valid.length;
             confidence_level = confidence_level_proportion * 100;
           }
+
+          // processing results complete
 
           resolve({
             confidence_level,
@@ -125,8 +126,8 @@ document.addEventListener("DOMContentLoaded", function () {
       runButton.disabled = true;
       runButton.textContent = "Running... 0%";
 
-      const updateProgress = (percentage) => {
-        runButton.textContent = `Running... ${percentage}%`;
+      const updateProgress = (message) => {
+        runButton.textContent = message;
       };
 
       monteCarloSimulation(
